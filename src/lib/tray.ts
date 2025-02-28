@@ -31,6 +31,7 @@ export const createTray = () => {
 
       event.preventDefault()
       await appWindow.hide()
+      await appWindow.setSkipTaskbar(true)
     })
   }
 

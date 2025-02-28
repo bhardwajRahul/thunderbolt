@@ -8,7 +8,7 @@ mod imap_client;
 use anyhow::Result;
 use sea_orm::ActiveModelTrait;
 use std::env;
-use tauri::command;
+use tauri::{command, ActivationPolicy};
 
 use entity::*;
 
@@ -43,6 +43,16 @@ async fn main() -> Result<()> {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![get_openai_api_key,]);
+
+    // Set the activation policy to accessory on macOS to prevent the app from being shown in the dock
+    if cfg!(target_os = "macos") {
+        builder = builder.setup(|app| {
+            let _ = app
+                .handle()
+                .set_activation_policy(ActivationPolicy::Accessory);
+            Ok(())
+        });
+    }
 
     #[cfg(debug_assertions)]
     {
