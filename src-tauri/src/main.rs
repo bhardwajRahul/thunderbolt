@@ -4,15 +4,11 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use indexmap::IndexMap;
-use libsql::{Connection, Error as LibsqlError, Value};
-use migration::{Migrator, MigratorTrait};
-use sea_orm::{Database, DatabaseConnection};
+use libsql::{Connection, Value};
 use serde_json::Value as JsonValue;
-use std::{collections::HashMap, env};
+use std::env;
 use tauri::{command, ActivationPolicy, Manager, State};
 use tokio::sync::Mutex;
-
-use entity::{message::Model as Message, *};
 
 const openai_api_key: &str = "";
 
@@ -62,7 +58,6 @@ fn value_to_json(value: Value) -> JsonValue {
 
 #[derive(Default)]
 struct AppState {
-    db: DatabaseConnection,
     libsql: Option<Connection>,
 }
 
@@ -178,22 +173,6 @@ async fn select(
 }
 
 #[command]
-async fn init_db(state: State<'_, Mutex<AppState>>, path: String) -> Result<(), String> {
-    let conn = Database::connect(path)
-        .await
-        .map_err(|e| format!("Failed to connect to database: {}", e))?;
-
-    Migrator::up(&conn, None)
-        .await
-        .map_err(|e| format!("Failed to run migrations: {}", e))?;
-
-    let mut state = state.lock().await;
-    state.db = conn;
-
-    Ok(())
-}
-
-#[command]
 fn get_openai_api_key() -> String {
     // println!(
     //     "get_openai_api_key {}",
@@ -214,78 +193,6 @@ fn get_openai_api_key() -> String {
 }
 
 #[command]
-async fn get_setting(
-    state: State<'_, Mutex<AppState>>,
-    id: String,
-) -> Result<Option<setting::Model>, String> {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-    let db = state.lock().await.db.clone();
-
-    setting::Entity::find()
-        .filter(setting::Column::Id.eq(id))
-        .one(&db)
-        .await
-        .map_err(|e| format!("Database error: {}", e))
-}
-
-#[command]
-async fn set_setting(
-    state: State<'_, Mutex<AppState>>,
-    key: String,
-    value: String,
-) -> Result<setting::Model, String> {
-    use chrono::Utc;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-
-    let db = state.lock().await.db.clone();
-
-    // Check if setting exists
-    let setting_exists = setting::Entity::find()
-        .filter(setting::Column::Id.eq(&key))
-        .one(&db)
-        .await
-        .map_err(|e| format!("Failed to query setting: {}", e))?
-        .is_some();
-
-    let active_model = if setting_exists {
-        // Update existing setting
-        let existing = setting::Entity::find()
-            .filter(setting::Column::Id.eq(&key))
-            .one(&db)
-            .await
-            .map_err(|e| format!("Failed to retrieve existing setting: {}", e))?
-            .ok_or_else(|| "Setting unexpectedly not found".to_string())?;
-
-        let mut active_model = existing.into_active_model();
-        active_model.value = Set(value);
-        active_model.updated_at = Set(Utc::now());
-        active_model
-    } else {
-        // Create new setting
-        setting::ActiveModel {
-            id: Set(key),
-            value: Set(value),
-            updated_at: Set(Utc::now()),
-            ..Default::default()
-        }
-    };
-
-    // Save to database
-    if setting_exists {
-        active_model
-            .update(&db)
-            .await
-            .map_err(|e| format!("Failed to update setting: {}", e))
-    } else {
-        active_model
-            .insert(&db)
-            .await
-            .map_err(|e| format!("Failed to insert setting: {}", e))
-    }
-}
-
-#[command]
 async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Result<(), String> {
     if cfg!(target_os = "macos") {
         let policy = if show {
@@ -301,23 +208,11 @@ async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Result<()
 }
 
 #[command]
-async fn fetch_inbox_top(count: Option<usize>) -> Result<Vec<Message>, String> {
-    println!("fetch_inbox_top {:?}", count);
-    // imap_client::fetch_inbox_top(Some(3)).map_err(|e| e.to_string())
-    Ok(vec![])
-}
-
-#[command]
 async fn get_or_create_stronghold_password(
     service_name: String,
     username: String,
 ) -> Result<String, String> {
     return Ok("password".to_string());
-}
-
-#[command]
-async fn process_message(message: message::Model) -> Result<(), String> {
-    Ok(())
 }
 
 #[tokio::main]
@@ -327,7 +222,6 @@ async fn main() -> Result<()> {
     let devtools = tauri_plugin_devtools::init();
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
@@ -338,12 +232,7 @@ async fn main() -> Result<()> {
         .invoke_handler(tauri::generate_handler![
             get_openai_api_key,
             toggle_dock_icon, // Add the new command
-            fetch_inbox_top,
             get_or_create_stronghold_password,
-            process_message,
-            get_setting,
-            set_setting,
-            init_db,
             init_libsql,
             execute,
             select,

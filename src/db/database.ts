@@ -24,6 +24,7 @@ export const db = drizzle<typeof schema>(
 
     // If the query is a SELECT, use the select method
     if (isSelectQuery(sql)) {
+      console.log('🚀 ~ sql:', sql)
       rows = await sqlite.select(sql, params).catch((e) => {
         console.error('SQL Error:', e)
         return []

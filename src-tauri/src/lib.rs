@@ -4,10 +4,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-pub mod db;
 pub mod embedding;
-pub mod imap_client;
-pub mod libsql_plugin;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
