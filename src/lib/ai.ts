@@ -67,11 +67,15 @@ export const ollama = createOpenAI({
   apiKey: 'ollama',
 })
 
-export const aiFetchStreamingResponse = async (_requestInfoOrUrl: RequestInfo | URL, init: RequestInit = {}) => {
+export const aiFetchStreamingResponse = async (apiKey: string, _requestInfoOrUrl: RequestInfo | URL, init: RequestInit = {}) => {
   // _requestInfoOrUrl is not used, but is required by fetch. The OpenAI wrapper handles the URL For us.
 
+  if (!apiKey) {
+    throw new Error('No API key provided')
+  }
+
   const openai = createOpenAI({
-    apiKey: '', // @todo
+    apiKey,
   })
 
   const options = init as RequestInit & { body: string }

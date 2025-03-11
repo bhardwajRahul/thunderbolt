@@ -3,12 +3,15 @@ import { A } from '@solidjs/router'
 import { Settings } from 'lucide-solid'
 import { Button } from './components/button'
 import ChatUI from './components/chat/ChatUI'
+import { useSettings } from './components/settings'
 import { Sidebar } from './components/sidebar'
 import { aiFetchStreamingResponse } from './lib/ai'
 
 export default function Home() {
+  const { settings } = useSettings()
+
   const chatHelpers = useChat({
-    fetch: aiFetchStreamingResponse,
+    fetch: (requestInfoOrUrl, init) => aiFetchStreamingResponse(settings.models?.openai_api_key, requestInfoOrUrl, init),
     maxSteps: 5,
   })
 
