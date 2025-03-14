@@ -51,3 +51,19 @@ export const chatMessagesTable = sqliteTable('chat_messages', {
     .notNull()
     .references(() => chatThreadsTable.id),
 })
+
+export const emailMessagesTable = sqliteTable('email_messages', {
+  id: text('id').primaryKey().notNull().unique(),
+  messageId: text('message_id').notNull().unique(),
+  html_body: text('html_body').notNull(),
+  text_body: text('text_body').notNull(),
+  parts: text('parts', { mode: 'json' }).notNull(),
+  subject: text('subject'),
+  date: text('date').notNull(),
+
+  // @todo this will become a foreign key to the email_messages table
+  from: text('from').notNull(),
+
+  // @todo this will become a foreign key to the email_messages table
+  in_reply_to: text('in_reply_to'),
+})

@@ -13,7 +13,7 @@ export const toolset = {
     }),
     execute: async () => {
       const messages = await invoke<ParsedEmail[]>('fetch_inbox', { count: 3 })
-
+      console.log('messages', messages)
       return messages.map(
         (message) => `
           Type: Message
