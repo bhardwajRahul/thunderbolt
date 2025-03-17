@@ -1,19 +1,20 @@
-import { EllipsisVertical, LogOut, Settings, User } from 'lucide-react'
+import { EllipsisVertical, LogOut, Settings } from 'lucide-react'
 import * as React from 'react'
 import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { SidebarMenuButton } from './sidebar'
 
-interface UserNavButtonProps extends React.HTMLAttributes<HTMLDivElement> {
+interface UserNavButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   username?: string
   userEmail?: string
 }
 
 export function UserNavButton({ username = 'John Doe', userEmail = 'john.doe@example.com', className, ...props }: UserNavButtonProps) {
   return (
-    <div className={cn('relative', className)} {...props}>
+    <SidebarMenuButton className={cn('relative', className)} {...props}>
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 h-10 px-3 group">
@@ -33,13 +34,7 @@ export function UserNavButton({ username = 'John Doe', userEmail = 'john.doe@exa
           <div className="py-1 px-2">
             <div className="mt-1 md:mt-0">
               <Button asChild variant="ghost" className="w-full justify-start">
-                <Link to="/profile">
-                  <User className="size-4 mr-2" />
-                  Profile
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" className="w-full justify-start">
-                <Link to="/settings">
+                <Link to="/settings/accounts">
                   <Settings className="size-4 mr-2" />
                   Settings
                 </Link>
@@ -52,6 +47,6 @@ export function UserNavButton({ username = 'John Doe', userEmail = 'john.doe@exa
           </div>
         </PopoverContent>
       </Popover>
-    </div>
+    </SidebarMenuButton>
   )
 }

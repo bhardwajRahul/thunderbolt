@@ -1,9 +1,9 @@
 import { ChatNavButton } from '@/components/ui/chat-nav-button'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar'
+import { UserNavButton } from '@/components/ui/user-nav-button'
 import { useDrizzle } from '@/db/provider'
 import { chatThreadsTable } from '@/db/schema'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Settings } from 'lucide-react'
 import { Link, Outlet, useNavigate, useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -49,15 +49,6 @@ export function ChatLayout() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/settings/accounts">
-                      <Settings className="size-4" />
-                      <span>Settings</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-
-                <SidebarMenuItem>
                   <SidebarMenuButton onClick={createNewChat}>
                     <span>New Chat</span>
                   </SidebarMenuButton>
@@ -93,6 +84,12 @@ export function ChatLayout() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <UserNavButton />
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarContent>
       </Sidebar>
       <div className="flex flex-col w-full">
