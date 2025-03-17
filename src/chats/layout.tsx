@@ -1,3 +1,4 @@
+import { ChatNavButton } from '@/components/ui/chat-nav-button'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar'
 import { useDrizzle } from '@/db/provider'
 import { chatThreadsTable } from '@/db/schema'
@@ -86,9 +87,7 @@ export function ChatLayout() {
               <SidebarMenu>
                 {chatThreads.map((thread) => (
                   <SidebarMenuItem key={thread.id}>
-                    <SidebarMenuButton asChild>
-                      <Link to={`/chats/${thread.id}`}>{thread.title}</Link>
-                    </SidebarMenuButton>
+                    <ChatNavButton chatTitle={thread.title ?? 'New Chat'} threadId={thread.id} />
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
