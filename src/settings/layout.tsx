@@ -43,6 +43,14 @@ export default function SettingsLayout() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={currentPath.includes('/settings/preferences')}>
+                      <Link to="/settings/preferences">
+                        <span>Preferences</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  <SidebarMenuItem>
                     <SidebarMenuButton asChild isActive={currentPath.includes('/settings/accounts')}>
                       <Link to="/settings/accounts">
                         <span>Accounts</span>

@@ -238,6 +238,11 @@ async fn sync_mailbox(
     result
 }
 
+#[command]
+fn get_env(name: &str) -> String {
+    std::env::var(name).unwrap_or_default()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // This should be called as early in the execution of the app as possible
@@ -264,7 +269,8 @@ async fn main() -> Result<()> {
             list_mailboxes,
             sync_mailbox,
             embedding::generate_embeddings,
-            embedding::init_embedder
+            embedding::init_embedder,
+            get_env
         ]);
 
     #[cfg(debug_assertions)]

@@ -3,6 +3,7 @@ import bodyParser from 'koa-bodyparser'
 import 'dotenv/config'
 import router from './routes'
 import { errorMiddleware } from './middlewares/error.middleware'
+import { corsMiddleware } from './middlewares/cors.middleware'
 
 // Initialize app
 const app = new Koa()
@@ -10,6 +11,7 @@ const PORT = process.env.PORT || 3001
 
 // Register middlewares
 app.use(errorMiddleware)
+app.use(corsMiddleware)
 app.use(bodyParser())
 
 // Register routes

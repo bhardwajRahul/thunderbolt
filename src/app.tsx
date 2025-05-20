@@ -9,8 +9,9 @@ import { default as Settings } from '@/settings/index'
 import ModelDetailPage from '@/settings/models/detail'
 import ModelsLayout from '@/settings/models/layout'
 import NewModelPage from '@/settings/models/new'
+import PreferencesSettingsPage from '@/settings/preferences'
 import { useEffect, useState } from 'react'
-import { seedAccounts, seedModels } from './dal'
+import { seedAccounts, seedModels, seedSettings } from './dal'
 import { initializeDrizzleDatabase } from './db/database'
 import { migrate } from './db/migrate'
 import { DrizzleProvider } from './db/provider'
@@ -21,6 +22,7 @@ import { ImapProvider } from './imap/provider'
 import Layout from './layout'
 import { createAppDataDir } from './lib/fs'
 import { TrayManager, TrayProvider } from './lib/tray'
+import { initializeAxios } from './lib/axios'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import { SideviewProvider } from './sideview/provider'
@@ -40,6 +42,9 @@ const init = async (): Promise<InitData> => {
 
   await seedAccounts(db)
   await seedModels(db)
+  await seedSettings(db)
+
+  await initializeAxios(db)
 
   const imap = new ImapClient()
   const imapSync = new ImapSyncClient()
@@ -122,6 +127,7 @@ export const App = () => {
                         {/* Settings routes with SettingsLayout */}
                         <Route path="settings" element={<SettingsLayout />}>
                           <Route index element={<Settings />} />
+                          <Route path="preferences" element={<PreferencesSettingsPage />} />
                           <Route path="accounts" element={<AccountsSettingsPage />} />
                           <Route path="models" element={<ModelsLayout />}>
                             <Route index element={<Navigate to="/settings/models/new" replace />} />
