@@ -1,12 +1,14 @@
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from functools import lru_cache
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import Settings
+from mcp_tools.ddg_search import mcp
 from proxy import ProxyConfig, ProxyService, get_proxy_service
 
 
@@ -17,8 +19,8 @@ def get_settings() -> Settings:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> Any:
-    """Application lifespan manager for startup and shutdown events."""
+async def proxy_lifespan(app: FastAPI) -> Any:
+    """Proxy service lifespan manager."""
     # Startup
     settings = get_settings()
     proxy_service = await get_proxy_service()
@@ -60,12 +62,31 @@ async def lifespan(app: FastAPI) -> Any:
     await proxy_service.close()
 
 
+# Create MCP app instance at module level so it can be reused
+mcp_app = mcp.http_app(path="/")
+
+
+@asynccontextmanager
+async def combined_lifespan(app: FastAPI) -> Any:
+    """Combined lifespan manager for both proxy service and MCP app."""
+    exit_stack = AsyncExitStack()
+    async with exit_stack:
+        # Enter the proxy lifespan
+        await exit_stack.enter_async_context(proxy_lifespan(app))
+
+        # Enter the MCP app lifespan
+        if hasattr(mcp_app, "lifespan") and mcp_app.lifespan:
+            await exit_stack.enter_async_context(mcp_app.lifespan(app))
+
+        yield
+
+
 # Create FastAPI app instance
 app = FastAPI(
     title="Thunderbolt Backend",
     description="A FastAPI backend with proxy capabilities",
     version="0.1.0",
-    lifespan=lifespan,
+    lifespan=combined_lifespan,
 )
 
 # Configure CORS
@@ -78,10 +99,135 @@ app.add_middleware(
 )
 
 
+app.mount("/mcp", mcp_app)
+
+
 @app.get("/health", response_model=dict[str, str])
 async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# Weather API endpoints
+@app.get("/weather/current")
+async def get_current_weather(
+    location: str, settings: Settings = Depends(get_settings)
+) -> Any:
+    """Get current weather for a location."""
+    if not settings.weather_api_key:
+        raise HTTPException(status_code=503, detail="Weather API key not configured")
+
+    if not location:
+        raise HTTPException(status_code=400, detail="Location parameter is required")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                "https://api.weatherapi.com/v1/current.json",
+                params={"key": settings.weather_api_key, "q": location, "aqi": "no"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                raise HTTPException(status_code=400, detail="Invalid location")
+            elif e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=503, detail="Weather API authentication failed"
+                )
+            else:
+                raise HTTPException(
+                    status_code=503, detail="Weather API service unavailable"
+                )
+        except httpx.RequestError:
+            raise HTTPException(
+                status_code=503, detail="Weather API service unavailable"
+            )
+
+
+@app.get("/weather/forecast")
+async def get_weather_forecast(
+    location: str, days: int = 3, settings: Settings = Depends(get_settings)
+) -> Any:
+    """Get weather forecast for a location."""
+    if not settings.weather_api_key:
+        raise HTTPException(status_code=503, detail="Weather API key not configured")
+
+    if not location:
+        raise HTTPException(status_code=400, detail="Location parameter is required")
+
+    if days < 1 or days > 14:
+        raise HTTPException(
+            status_code=400, detail="Days parameter must be between 1 and 14"
+        )
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                "https://api.weatherapi.com/v1/forecast.json",
+                params={
+                    "key": settings.weather_api_key,
+                    "q": location,
+                    "days": days,
+                    "aqi": "no",
+                    "alerts": "no",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                raise HTTPException(
+                    status_code=400, detail="Invalid location or parameters"
+                )
+            elif e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=503, detail="Weather API authentication failed"
+                )
+            else:
+                raise HTTPException(
+                    status_code=503, detail="Weather API service unavailable"
+                )
+        except httpx.RequestError:
+            raise HTTPException(
+                status_code=503, detail="Weather API service unavailable"
+            )
+
+
+@app.get("/locations")
+async def search_locations(
+    query: str, settings: Settings = Depends(get_settings)
+) -> Any:
+    """Search for locations."""
+    if not settings.weather_api_key:
+        raise HTTPException(status_code=503, detail="Weather API key not configured")
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                "https://api.weatherapi.com/v1/search.json",
+                params={"key": settings.weather_api_key, "q": query},
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                raise HTTPException(status_code=400, detail="Invalid search query")
+            elif e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=503, detail="Weather API authentication failed"
+                )
+            else:
+                raise HTTPException(
+                    status_code=503, detail="Weather API service unavailable"
+                )
+        except httpx.RequestError:
+            raise HTTPException(
+                status_code=503, detail="Weather API service unavailable"
+            )
 
 
 # OpenAI-compatible endpoints

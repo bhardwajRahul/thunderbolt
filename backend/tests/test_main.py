@@ -1,6 +1,9 @@
 """Tests for main FastAPI endpoints."""
 
+from unittest.mock import patch
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
@@ -44,7 +47,8 @@ def test_proxy_not_configured(client: TestClient) -> None:
 def test_openai_proxy_without_config(client: TestClient) -> None:
     """Test OpenAI proxy when not configured."""
     # This test assumes FIREWORKS_API_KEY is not set in test environment
-    # You might need to mock the settings for this test
-    response = client.post("/openai/chat/completions", json={})
-    # Should either return 404 if not configured or pass through to the API
-    assert response.status_code in [404, 401, 422]
+    # Mock the response to avoid making actual API calls
+    with patch("proxy.ProxyService.get_config", return_value=None):
+        response = client.post("/openai/chat/completions", json={})
+        assert response.status_code == 404
+        assert response.json()["detail"] == "OpenAI proxy not configured"

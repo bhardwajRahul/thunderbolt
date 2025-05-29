@@ -7,7 +7,9 @@ import { createDeepInfra } from '@ai-sdk/deepinfra'
 import { createFireworks } from '@ai-sdk/fireworks'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { convertToModelMessages, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel } from 'ai'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+
+import { convertToModelMessages, experimental_createMCPClient, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel, type ToolSet } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createToolset, tools } from './tools'
 
@@ -33,7 +35,7 @@ const createPrompt = ({ preferredName, location }: PromptParams) => {
     `You can use the available tools to answer the user's question.`,
     `If you are unable to answer the user's question based on the available information, just say so. Do not make up an answer.`,
     `Respond to the user's question in a helpful, concise and friendly manner. Always reply to the user in plain text - do not reply in markdown or mention JSON or anything about tools.`,
-    `Always reply to the user, even if it is just a question or a simple statement that you aren't able to provide an answer.`,
+    `If you search DuckDuckGo, always use the fetch_content tool to actually fetch and parse the results that look relevant to the user's question.`,
   ]
 
   return prompt.filter(Boolean).join('\n')
@@ -156,10 +158,25 @@ export const aiFetchStreamingResponse = async ({ init, saveMessages, model: mode
 
     const weatherClient = await getOrCreateWeatherClient()
 
+    const mcpClient = await experimental_createMCPClient({
+      transport: new StreamableHTTPClientTransport(new URL('http://localhost:8000/mcp/'), {
+        sessionId: '1a0063b088da458eb6a6ce504ea25bbc', // @todo
+      }),
+    })
+
+    // const weatherMcpClient = await createMCPClient({
+    //   transport: new StreamableHTTPClientTransport(new URL('https://server.smithery.ai/@isdaniel/mcp_weather_server/mcp?api_key=LOL_OOPS')),
+    // })
+
+    // Wait longer for the SSE connection to fully establish
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+
     // @todo cache this?
-    const toolset = {
+    const toolset: ToolSet = {
       ...createToolset(tools),
       ...createAISDKTools(weatherClient),
+      ...(await mcpClient.tools()),
+      // ...(await weatherMcpClient.tools()),
     }
 
     const result = streamText({
@@ -179,6 +196,9 @@ export const aiFetchStreamingResponse = async ({ init, saveMessages, model: mode
       // continueUntil: maxSteps(5),
 
       // toolChoice: 'required',
+      onFinish: async () => {
+        // await mcpClient.close()
+      },
     })
 
     return result.toUIMessageStreamResponse({
