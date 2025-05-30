@@ -21,8 +21,16 @@
     "messagesTags",
     "tabs",
     "compose",
-    "compose.send"
+    "compose.send",
+    "activeTab"
   ],
+  
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*"
+  ],
+  
+  "content_security_policy": "script-src 'self'; object-src 'self'; connect-src 'self' ws://localhost:* wss://localhost:* http://localhost:* https://localhost:*;",
   
   "background": {
     "scripts": ["background/background.js"],

@@ -289,6 +289,28 @@ async fn get_bridge_status(app_handle: tauri::AppHandle) -> Result<bool, String>
     }
 }
 
+#[command]
+async fn get_bridge_connection_status() -> Result<serde_json::Value, String> {
+    use thunderbolt_bridge::bridge::BRIDGE_STATE;
+    
+    let state = BRIDGE_STATE.lock().await;
+    let has_websocket_server = state.websocket_server.is_some();
+    let has_mcp_rx = state.mcp_request_rx.is_some();
+    
+    let active_connections = if let Some(ws_server) = &state.websocket_server {
+        ws_server.get_active_connection().is_some()
+    } else {
+        false
+    };
+    
+    Ok(serde_json::json!({
+        "websocket_server_initialized": has_websocket_server,
+        "mcp_receiver_initialized": has_mcp_rx,
+        "thunderbird_connected": active_connections,
+        "bridge_ready": has_websocket_server && has_mcp_rx && active_connections
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // This should be called as early in the execution of the app as possible
@@ -321,7 +343,8 @@ async fn main() -> Result<()> {
             get_env,
             init_bridge,
             set_bridge_enabled,
-            get_bridge_status
+            get_bridge_status,
+            get_bridge_connection_status
         ]);
 
     #[cfg(debug_assertions)]

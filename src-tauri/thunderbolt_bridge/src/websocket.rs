@@ -23,6 +23,11 @@ pub enum ThunderbirdMessage {
         result: Option<serde_json::Value>,
         error: Option<String>,
     },
+    #[serde(rename = "test")]
+    Test {
+        timestamp: u64,
+        message: String,
+    },
 }
 
 pub struct WebSocketConnection {
@@ -47,10 +52,11 @@ impl WebSocketServer {
     }
 
     pub async fn handle_connection(&self, stream: TcpStream, addr: std::net::SocketAddr) -> Result<()> {
-        tracing::info!("New WebSocket connection from: {}", addr);
+        tracing::info!("🔌 New WebSocket connection from: {}", addr);
         
         let ws_stream = accept_async(stream).await?;
         let conn_id = Uuid::new_v4();
+        tracing::info!("✅ WebSocket handshake completed for connection: {}", conn_id);
         
         let (tx, rx) = mpsc::unbounded_channel();
         let connection = WebSocketConnection { id: conn_id, tx };
@@ -60,7 +66,7 @@ impl WebSocketServer {
         self.handle_messages(conn_id, ws_stream, rx).await?;
         
         self.connections.remove(&conn_id);
-        tracing::info!("WebSocket connection {} closed", conn_id);
+        tracing::info!("❌ WebSocket connection {} closed", conn_id);
         
         Ok(())
     }
@@ -88,14 +94,16 @@ impl WebSocketServer {
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
+                    tracing::debug!("📨 Received WebSocket message from {}: {}", conn_id, text);
                     match serde_json::from_str::<ThunderbirdMessage>(&text) {
                         Ok(tb_msg) => {
+                            tracing::info!("✅ Parsed Thunderbird message: {:?}", tb_msg);
                             if let Err(e) = message_tx.send((conn_id, tb_msg)) {
                                 tracing::error!("Error forwarding message: {}", e);
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Error parsing message: {}", e);
+                            tracing::error!("❌ Error parsing message: {} - Raw text: {}", e, text);
                         }
                     }
                 }
@@ -115,10 +123,12 @@ impl WebSocketServer {
     pub async fn send_to_connection(&self, conn_id: Uuid, msg: ThunderbirdMessage) -> Result<()> {
         if let Some(conn) = self.connections.get(&conn_id) {
             let text = serde_json::to_string(&msg)?;
+            tracing::info!("📤 Sending message to connection {}: {}", conn_id, text);
             conn.tx.send(Message::Text(text))
                 .map_err(|_| crate::BridgeError::NotConnected)?;
             Ok(())
         } else {
+            tracing::error!("❌ Connection {} not found", conn_id);
             Err(crate::BridgeError::NotConnected)
         }
     }
@@ -132,7 +142,10 @@ impl WebSocketServer {
     }
 
     pub fn get_active_connection(&self) -> Option<Uuid> {
-        self.connections.iter().next().map(|entry| *entry.key())
+        let result = self.connections.iter().next().map(|entry| *entry.key());
+        tracing::debug!("🔍 Active connections: {} total, active: {:?}", 
+                       self.connections.len(), result);
+        result
     }
 
     pub async fn recv_message(&self) -> Option<(Uuid, ThunderbirdMessage)> {

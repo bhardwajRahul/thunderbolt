@@ -19,6 +19,12 @@ export default function ThunderboltBridgeSettingsPage() {
   const [isInitializing, setIsInitializing] = React.useState(false)
   const [bridgeEnabled, setBridgeEnabled] = React.useState(false)
   const [isConnected, setIsConnected] = React.useState(false)
+  const [connectionStatus, setConnectionStatus] = React.useState<{
+    websocket_server_initialized: boolean
+    mcp_receiver_initialized: boolean
+    thunderbird_connected: boolean
+    bridge_ready: boolean
+  } | null>(null)
 
   // Get bridge settings from database
   const { data: settings, isLoading } = useQuery({
@@ -37,14 +43,20 @@ export default function ThunderboltBridgeSettingsPage() {
       try {
         const status = await invoke<boolean>('get_bridge_status')
         setIsConnected(status)
+        setBridgeEnabled(status)
+        
+        // Get detailed connection status
+        const detailedStatus = await invoke<any>('get_bridge_connection_status')
+        setConnectionStatus(detailedStatus)
       } catch (error) {
         console.error('Failed to get bridge status:', error)
         setIsConnected(false)
+        setConnectionStatus(null)
       }
     }
 
     checkStatus()
-    const interval = setInterval(checkStatus, 5000) // Check every 5 seconds
+    const interval = setInterval(checkStatus, 3000) // Check every 3 seconds
 
     return () => clearInterval(interval)
   }, [])
@@ -146,8 +158,24 @@ export default function ThunderboltBridgeSettingsPage() {
               <AlertTitle>Connection Details</AlertTitle>
               <AlertDescription className="space-y-2 mt-2">
                 <div>
-                  <strong>Status:</strong> {isConnected ? 'Connected' : 'Waiting for Thunderbird extension...'}
+                  <strong>Bridge Status:</strong> {isConnected ? 'Enabled' : 'Disabled'}
                 </div>
+                {connectionStatus && (
+                  <>
+                    <div>
+                      <strong>WebSocket Server:</strong> {connectionStatus.websocket_server_initialized ? '✅ Running' : '❌ Not started'}
+                    </div>
+                    <div>
+                      <strong>MCP Server:</strong> {connectionStatus.mcp_receiver_initialized ? '✅ Running' : '❌ Not started'}
+                    </div>
+                    <div>
+                      <strong>Thunderbird Connection:</strong> {connectionStatus.thunderbird_connected ? '✅ Connected' : '❌ Not connected'}
+                    </div>
+                    <div>
+                      <strong>Overall Status:</strong> {connectionStatus.bridge_ready ? '✅ Ready' : '❌ Not ready'}
+                    </div>
+                  </>
+                )}
                 <div>
                   <strong>WebSocket:</strong> ws://localhost:9001
                 </div>

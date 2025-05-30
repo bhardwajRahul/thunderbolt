@@ -1,273 +1,333 @@
-use crate::{BridgeConfig, Result};
-use axum::{
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    response::{sse::Event, Sse, Response, IntoResponse},
-    routing::{get, post},
-    Json, Router,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use crate::{BridgeConfig, Result as BridgeResult};
+use http_body_util::{BodyExt, Full};
+use hyper::body::{Bytes, Incoming};
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response, StatusCode};
+use hyper_util::rt::TokioIo;
+use serde_json::{json, Value};
+use std::convert::Infallible;
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
-use tower_http::cors::CorsLayer;
-use uuid::Uuid;
+use tracing::{debug, error, info};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MCPRequest {
-    pub jsonrpc: String,
+#[derive(Debug, Clone)]
+pub struct BridgeMessage {
     pub id: Value,
-    pub method: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub params: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MCPResponse {
-    pub jsonrpc: String,
-    pub id: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<MCPError>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MCPError {
-    pub code: i32,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MCPNotification {
-    pub jsonrpc: String,
-    pub method: String,
-    pub params: Option<Value>,
+    pub tool_name: String,
+    pub arguments: Value,
 }
 
 #[derive(Clone)]
-pub struct MCPServerState {
-    bridge_tx: mpsc::UnboundedSender<MCPRequest>,
-    sse_tx: tokio::sync::broadcast::Sender<MCPResponse>,
-    session_id: Arc<RwLock<Option<String>>>,
+struct ThunderboltTools {
 }
 
-impl MCPServerState {
-    pub fn new() -> (Self, mpsc::UnboundedReceiver<MCPRequest>) {
-        let (bridge_tx, bridge_rx) = mpsc::unbounded_channel();
-        let (sse_tx, _) = tokio::sync::broadcast::channel(100);
-        
-        (Self { 
-            bridge_tx, 
-            sse_tx,
-            session_id: Arc::new(RwLock::new(None)),
-        }, bridge_rx)
+impl ThunderboltTools {
+    fn new() -> Self {
+        Self { }
     }
 }
 
-async fn handle_mcp_endpoint(
-    state: Arc<MCPServerState>,
-    headers: HeaderMap,
-    method: axum::http::Method,
-    body: Option<Json<MCPRequest>>,
-) -> Response<axum::body::Body> {
-    // Handle GET requests for SSE
-    if method == axum::http::Method::GET {
-        let mut rx = state.sse_tx.subscribe();
-        
-        let stream = async_stream::stream! {
-            // Send initial connection event
-            yield Ok::<_, std::convert::Infallible>(Event::default().event("open").data(""));
-            
-            while let Ok(response) = rx.recv().await {
-                let data = serde_json::to_string(&response).unwrap_or_default();
-                yield Ok::<_, std::convert::Infallible>(Event::default().data(data));
-            }
-        };
-        
-        return Sse::new(stream).into_response();
-    }
-    
-    // Handle POST requests for JSON-RPC
-    if method == axum::http::Method::POST {
-        if let Some(Json(request)) = body {
-            tracing::debug!("MCP request: {:?}", request);
-            
-            // Handle different methods
-            match request.method.as_str() {
-                "initialize" => {
-                    // Generate session ID
-                    let session_id = Uuid::new_v4().to_string();
-                    *state.session_id.write().await = Some(session_id.clone());
-                    
-                    let response = MCPResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: Some(serde_json::json!({
-                            "protocolVersion": "0.1.0",
-                            "capabilities": {
-                                "tools": true,
-                                "resources": false,
-                                "prompts": false,
-                                "logging": false,
-                            },
-                            "serverInfo": {
-                                "name": "Thunderbolt Bridge MCP Server",
-                                "version": "1.0.0"
-                            }
-                        })),
-                        error: None,
-                    };
-                    
-                    return Json(response).into_response();
-                }
-                
-                "tools/list" => {
-                    let response = MCPResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: Some(serde_json::json!({
-                            "tools": [
-                                {
-                                    "name": "thunderbird_contacts",
-                                    "description": "Get contacts from Thunderbird",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "query": {
-                                                "type": "string",
-                                                "description": "Optional search query"
-                                            }
-                                        }
-                                    }
-                                },
-                                {
-                                    "name": "thunderbird_emails",
-                                    "description": "Get emails from Thunderbird",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "folder": {
-                                                "type": "string",
-                                                "description": "Email folder (e.g., INBOX)"
-                                            },
-                                            "limit": {
-                                                "type": "number",
-                                                "description": "Maximum number of emails to return"
-                                            }
-                                        }
-                                    }
-                                },
-                                {
-                                    "name": "thunderbird_accounts",
-                                    "description": "Get email accounts from Thunderbird",
-                                    "inputSchema": {
-                                        "type": "object",
-                                        "properties": {}
-                                    }
-                                }
-                            ]
-                        })),
-                        error: None,
-                    };
-                    
-                    return Json(response).into_response();
-                }
-                
-                "tools/call" => {
-                    // Forward to bridge for processing
-                    if let Err(e) = state.bridge_tx.send(request.clone()) {
-                        tracing::error!("Failed to forward MCP request: {}", e);
-                        let error_response = MCPResponse {
-                            jsonrpc: "2.0".to_string(),
-                            id: request.id,
-                            result: None,
-                            error: Some(MCPError {
-                                code: -32603,
-                                message: "Internal error".to_string(),
-                                data: None,
-                            }),
-                        };
-                        return Json(error_response).into_response();
-                    }
-                    
-                    // For now, return acknowledgment that we're processing
-                    // The actual response will come through SSE
-                    return Response::builder()
-                        .status(StatusCode::ACCEPTED)
-                        .body(axum::body::Body::empty())
-                        .unwrap();
-                }
-                
-                _ => {
-                    // Unknown method
-                    let response = MCPResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: None,
-                        error: Some(MCPError {
-                            code: -32601,
-                            message: format!("Method not found: {}", request.method),
-                            data: None,
-                        }),
-                    };
-                    
-                    return Json(response).into_response();
-                }
-            }
+impl ThunderboltTools {
+    /// Get contacts from Thunderbird
+    async fn thunderbird_contacts(&self, query: Option<String>) -> Result<Value, String> {
+        // Use the new bridge function to send request and wait for response
+        match crate::bridge::send_request_and_wait(
+            "thunderbird_contacts".to_string(),
+            json!({ "query": query }),
+            5000, // 5 second timeout
+        ).await {
+            Ok(result) => Ok(result),
+            Err(e) => Err(format!("Thunderbird error: {}", e)),
         }
     }
     
-    // Method not allowed
-    Response::builder()
-        .status(StatusCode::METHOD_NOT_ALLOWED)
-        .body(axum::body::Body::empty())
-        .unwrap()
+    /// Get emails from Thunderbird
+    async fn thunderbird_emails(&self, folder: Option<String>, limit: Option<u32>) -> Result<Value, String> {
+        // Use the new bridge function to send request and wait for response
+        match crate::bridge::send_request_and_wait(
+            "thunderbird_emails".to_string(),
+            json!({ "folder": folder, "limit": limit }),
+            5000, // 5 second timeout
+        ).await {
+            Ok(result) => Ok(result),
+            Err(e) => Err(format!("Thunderbird error: {}", e)),
+        }
+    }
+    
+    /// Get email accounts from Thunderbird
+    async fn thunderbird_accounts(&self) -> Result<Value, String> {
+        // Use the new bridge function to send request and wait for response
+        match crate::bridge::send_request_and_wait(
+            "thunderbird_accounts".to_string(),
+            json!({}),
+            5000, // 5 second timeout
+        ).await {
+            Ok(result) => Ok(result),
+            Err(e) => Err(format!("Thunderbird error: {}", e)),
+        }
+    }
 }
 
-// Helper functions to extract method and body
-async fn mcp_get_handler(
-    State(state): State<Arc<MCPServerState>>,
-    headers: HeaderMap,
-) -> Response<axum::body::Body> {
-    handle_mcp_endpoint(state, headers, axum::http::Method::GET, None).await
+/// HTTP service handler that processes MCP requests using rmcp
+async fn handle_http_request(
+    tools: Arc<ThunderboltTools>,
+    req: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    // Check if this is the /mcp endpoint
+    if req.uri().path() != "/mcp" {
+        return Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Full::new(Bytes::from("Not Found")))
+            .unwrap());
+    }
+    
+    // Handle OPTIONS preflight requests
+    if req.method() == hyper::Method::OPTIONS {
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .header("Access-Control-Max-Age", "86400")
+            .body(Full::new(Bytes::from("")))
+            .unwrap());
+    }
+    
+    // Only accept POST requests
+    if req.method() != hyper::Method::POST {
+        return Ok(Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Full::new(Bytes::from("Method Not Allowed")))
+            .unwrap());
+    }
+    
+    // Read the request body
+    let body_bytes = match req.collect().await {
+        Ok(body) => body.to_bytes(),
+        Err(e) => {
+            error!("Failed to read request body: {}", e);
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Full::new(Bytes::from("Bad Request")))
+                .unwrap());
+        }
+    };
+    
+    // Parse as JSON-RPC request
+    let json_request: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("Failed to parse JSON request: {}", e);
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Full::new(Bytes::from("Invalid JSON")))
+                .unwrap());
+        }
+    };
+    
+    debug!("Received MCP request: {:?}", json_request);
+    
+    // Handle JSON-RPC requests manually
+    let method = json_request.get("method").and_then(|m| m.as_str()).unwrap_or("");
+    let params = json_request.get("params").cloned().unwrap_or(json!({}));
+    let id = json_request.get("id").cloned();
+    
+    let result = match method {
+        "initialize" => {
+            // Handle MCP initialization
+            json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {
+                        "listChanged": true
+                    }
+                },
+                "serverInfo": {
+                    "name": "Thunderbolt MCP Server",
+                    "version": "0.1.0"
+                }
+            })
+        },
+        "notifications/initialized" => {
+            // Client has initialized - just acknowledge
+            json!({})
+        },
+        "tools/list" => {
+            // List available tools
+            json!({
+                "tools": [
+                    {
+                        "name": "thunderbird_contacts",
+                        "description": "Get contacts from Thunderbird",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "Optional search query"
+                                }
+                            },
+                            "required": []
+                        }
+                    },
+                    {
+                        "name": "thunderbird_emails",
+                        "description": "Get emails from Thunderbird",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "folder": {
+                                    "type": "string",
+                                    "description": "Optional folder name"
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "description": "Maximum number of emails to return"
+                                }
+                            },
+                            "required": []
+                        }
+                    },
+                    {
+                        "name": "thunderbird_accounts",
+                        "description": "Get email accounts from Thunderbird",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                ]
+            })
+        },
+        "tools/call" => {
+            // Handle tool calls
+            let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let tool_args = params.get("arguments").cloned().unwrap_or(json!({}));
+            
+            match tool_name {
+                "thunderbird_contacts" => {
+                    let query = tool_args.get("query").and_then(|q| q.as_str()).map(String::from);
+                    match tools.thunderbird_contacts(query).await {
+                        Ok(result) => result,
+                        Err(e) => json!({
+                            "error": true,
+                            "message": e,
+                            "details": "Failed to retrieve contacts from Thunderbird"
+                        })
+                    }
+                },
+                "thunderbird_emails" => {
+                    let folder = tool_args.get("folder").and_then(|f| f.as_str()).map(String::from);
+                    let limit = tool_args.get("limit").and_then(|l| l.as_u64()).map(|l| l as u32);
+                    match tools.thunderbird_emails(folder, limit).await {
+                        Ok(result) => result,
+                        Err(e) => json!({
+                            "error": true,
+                            "message": e,
+                            "details": "Failed to retrieve emails from Thunderbird"
+                        })
+                    }
+                },
+                "thunderbird_accounts" => {
+                    match tools.thunderbird_accounts().await {
+                        Ok(result) => result,
+                        Err(e) => json!({
+                            "error": true,
+                            "message": e,
+                            "details": "Failed to retrieve accounts from Thunderbird"
+                        })
+                    }
+                },
+                _ => json!({
+                    "error": true,
+                    "message": format!("Unknown tool: {}", tool_name),
+                    "details": "Tool not found"
+                })
+            }
+        },
+        _ => json!({
+            "error": true,
+            "message": format!("Method not found: {}", method),
+            "details": "MCP method not supported"
+        })
+    };
+    
+    // For notifications, don't send a response
+    let response = if method.starts_with("notifications/") {
+        // Notifications don't get responses
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .body(Full::new(Bytes::from("{}")))
+            .unwrap());
+    } else {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result
+        })
+    };
+    
+    // Serialize response
+    let response_bytes = serde_json::to_vec(&response).unwrap_or_else(|_| {
+        br#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Failed to serialize response"}}"#.to_vec()
+    });
+    
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        .body(Full::new(Bytes::from(response_bytes)))
+        .unwrap())
 }
 
-async fn mcp_post_handler(
-    State(state): State<Arc<MCPServerState>>,
-    headers: HeaderMap,
-    Json(body): Json<MCPRequest>,
-) -> Response<axum::body::Body> {
-    handle_mcp_endpoint(state, headers, axum::http::Method::POST, Some(Json(body))).await
-}
-
-pub async fn run_server(config: Arc<RwLock<BridgeConfig>>) -> Result<()> {
+pub async fn run_server(config: Arc<RwLock<BridgeConfig>>) -> BridgeResult<()> {
     let addr = config.read().await.mcp_addr;
     
-    let (state, bridge_rx) = MCPServerState::new();
-    let state = Arc::new(state);
+    // Create channel for bridge communication
+    let (bridge_tx, bridge_rx) = mpsc::unbounded_channel::<BridgeMessage>();
     
-    // Store channels for bridge access
+    // Store channel for bridge access
     {
         let mut bridge_state = crate::bridge::BRIDGE_STATE.lock().await;
         bridge_state.mcp_request_rx = Some(bridge_rx);
-        bridge_state.mcp_response_tx = Some(state.sse_tx.clone());
     }
     
-    let app = Router::new()
-        // Main MCP endpoint that handles both GET (SSE) and POST (JSON-RPC)
-        .route("/mcp/", get(mcp_get_handler).post(mcp_post_handler))
-        // Legacy endpoints for backward compatibility
-        .route("/", post(mcp_post_handler))
-        .route("/sse", get(mcp_get_handler))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+    // Create the tools instance
+    let tools = Arc::new(ThunderboltTools::new());
     
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("MCP server listening on: {}", addr);
+    // Bind to the address
+    let listener = TcpListener::bind(addr).await?;
+    info!("MCP server listening on: http://{}/mcp", addr);
     
-    axum::serve(listener, app).await?;
-    Ok(())
+    // Accept connections and serve them
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let tools = Arc::clone(&tools);
+        
+        tokio::task::spawn(async move {
+            if let Err(err) = http1::Builder::new()
+                .serve_connection(io, service_fn(|req| {
+                    let tools = Arc::clone(&tools);
+                    async move { handle_http_request(tools, req).await }
+                }))
+                .await
+            {
+                error!("Error serving connection: {:?}", err);
+            }
+        });
+    }
 }
