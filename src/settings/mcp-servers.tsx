@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +11,7 @@ import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Globe, Plus, Square, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -501,16 +500,12 @@ export default function McpServersPage() {
                     <div className="grid gap-3">
                       {tools.map((tool) => (
                         <div key={tool} className="flex items-center space-x-3">
-                          <Checkbox
-                            id={`${server.id}-${tool}`}
-                            checked={selectedTools[server.id]?.[tool] ?? true}
-                            onCheckedChange={(checked) => handleToolToggle(server.id, tool, checked as boolean)}
-                            disabled={true}
-                            className="cursor-default"
-                          />
-                          <Label htmlFor={`${server.id}-${tool}`} className="text-sm cursor-default flex-1 font-normal">
-                            {tool}
-                          </Label>
+                          {selectedTools[server.id]?.[tool] ?? true ? (
+                            <Check className="h-4 w-4 text-primary cursor-default flex-shrink-0" />
+                          ) : (
+                            <Square className="h-4 w-4 text-muted-foreground cursor-default flex-shrink-0" />
+                          )}
+                          <span className="text-sm cursor-default flex-1 font-normal">{tool}</span>
                         </div>
                       ))}
                     </div>
