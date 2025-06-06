@@ -22,6 +22,12 @@ pub async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Resul
 
         let _ = app_handle.set_activation_policy(policy);
     }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app_handle;
+        let _ = show;
+    }
 
     Ok(())
 }
