@@ -209,7 +209,7 @@ class TestMCPTools:
                 "Current weather at coordinates (51.5074, -0.1278): 15°C"
             )
 
-            result = await get_current_weather.fn(51.5074, -0.1278, ctx)
+            result = await get_current_weather(51.5074, -0.1278, ctx)
 
             assert result == "Current weather at coordinates (51.5074, -0.1278): 15°C"
             mock_get.assert_called_once_with(51.5074, -0.1278, ctx)
@@ -222,7 +222,7 @@ class TestMCPTools:
         with patch("mcp_tools.weather.weather_client.get_weather_forecast") as mock_get:
             mock_get.return_value = "3-day forecast for coordinates (51.5074, -0.1278)"
 
-            result = await get_weather_forecast.fn(51.5074, -0.1278, ctx, days=3)
+            result = await get_weather_forecast(51.5074, -0.1278, ctx, days=3)
 
             assert result == "3-day forecast for coordinates (51.5074, -0.1278)"
             mock_get.assert_called_once_with(51.5074, -0.1278, 3, ctx)
@@ -247,7 +247,7 @@ class TestMCPTools:
         with patch("mcp_tools.weather.weather_client.search_locations") as mock_search:
             mock_search.return_value = mock_locations
 
-            result = await search_locations.fn("London", ctx)
+            result = await search_locations("London", ctx)
 
             assert "Found 1 locations matching 'London':" in result
             assert "London, England, United Kingdom" in result

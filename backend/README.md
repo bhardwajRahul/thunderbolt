@@ -14,19 +14,12 @@ This repository contains the backend service for the Thunderbolt project. It is 
 
 ### Local Development
 
-1. Install dependencies using uv:
-
 ```bash
-uv sync
-```
-
-2. Create a `.env` file with your API keys:
-
-```bash
-# Copy this to .env and replace with your actual keys
-FIREWORKS_API_KEY=your_fireworks_api_key
-WEATHER_API_KEY=your_weather_api_key  # Optional
-LOG_LEVEL=debug  # Optional, for development
+cp .env.example .env
+# Update .env with env vars
+uv venv
+source .venv/bin/activate
+uv sync --extra dev
 ```
 
 ### Docker Deployment

@@ -4,9 +4,7 @@ version = "0.1.0"
 description = "Backend for Thunderbolt"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [
-    { name = "Chris Roth", email = "chris@cjroth.com" }
-]
+authors = [{ name = "Chris Roth", email = "chris@cjroth.com" }]
 license = { text = "Mozilla Public License 2.0" }
 keywords = ["fastapi", "proxy", "api"]
 classifiers = [
@@ -16,7 +14,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
-
 dependencies = [
     "brotli>=1.1.0",
     "fastapi[standard]>=0.115.6",
@@ -25,7 +22,7 @@ dependencies = [
     "websockets>=14.1",
     "mcp>=1.1.0",
     "beautifulsoup4>=4.12.0",
-    "fastmcp>=2.5.1",
+    "fastmcp==2.5.1",
 ]
 
 [project.optional-dependencies]
@@ -37,11 +34,10 @@ dev = [
     "mypy>=1.10.0",
     "types-beautifulsoup4>=4.12.0",
     "pre-commit>=3.7.0",
-    "httpx[http2]>=0.28.1",  # For testing HTTP/2
+    "httpx[http2]>=0.28.1", # For testing HTTP/2
+
 ]
-prod = [
-    "gunicorn>=22.0.0",
-]
+prod = ["gunicorn>=22.0.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -53,21 +49,23 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "B",    # flake8-bugbear
-    "C4",   # flake8-comprehensions
-    "UP",   # pyupgrade
-    "ARG",  # flake8-unused-arguments
-    "SIM",  # flake8-simplify
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+    "B", # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in argument defaults
+    "E501", # line too long (handled by formatter)
+    "B008", # do not perform function calls in argument defaults
     "ARG001", # unused function arguments (common in FastAPI)
-    "E722",   # bare except (sometimes needed)
+    "E722", # bare except (sometimes needed)
+
 ]
 
 [tool.ruff.lint.isort]
@@ -114,12 +112,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["."]
-omit = [
-    "*/tests/*",
-    "*/__pycache__/*",
-    "*/venv/*",
-    "*/.venv/*",
-]
+omit = ["*/tests/*", "*/__pycache__/*", "*/venv/*", "*/.venv/*"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -134,16 +127,5 @@ exclude_lines = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-include = [
-    "*.py",
-]
-exclude = [
-    "tests/",
-    "*.pyc",
-    "__pycache__/",
-]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.11.11",
-]
+include = ["*.py"]
+exclude = ["tests/", "*.pyc", "__pycache__/"]

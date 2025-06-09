@@ -8,6 +8,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { convertToModelMessages, experimental_createMCPClient, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel, type ToolSet } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createToolset, tools } from './tools'
+import { getCloudUrl } from './config'
 
 export type ToolInvocationWithResult<T = object> = ToolInvocation & {
   result: T
@@ -69,9 +70,8 @@ type AiFetchStreamingResponseOptions = {
 export const createModel = async (modelConfig: Model): Promise<LanguageModel> => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const { db } = await getDrizzleDatabase()
-      const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
-      const cloudUrl = (cloudUrlSetting?.value as string) || 'http://localhost:8000'
+      // Use centralized config function
+      const cloudUrl = await getCloudUrl()
 
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',

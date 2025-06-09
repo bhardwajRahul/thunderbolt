@@ -2,6 +2,7 @@ import { desc, eq, notExists } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { accountsTable, chatMessagesTable, chatThreadsTable, emailMessagesTable, emailThreadsTable, mcpServersTable, modelsTable, settingsTable } from './db/tables'
 import { DrizzleContextType, EmailThreadWithMessagesAndAddresses } from './types'
+import { getDefaultCloudUrl } from '@/lib/config'
 
 export const seedAccounts = async (db: DrizzleContextType['db']) => {
   await db.select().from(accountsTable)
@@ -73,9 +74,10 @@ export const seedSettings = async (db: DrizzleContextType['db']) => {
   const cloudUrlSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url')).get()
 
   if (!cloudUrlSetting) {
+    // Use centralized config for default cloud URL
     await db.insert(settingsTable).values({
       key: 'cloud_url',
-      value: 'https://thunderbolt-hooc.onrender.com',
+      value: getDefaultCloudUrl(),
     })
   }
 
@@ -93,10 +95,11 @@ export const seedMcpServers = async (db: DrizzleContextType['db']) => {
   const existingServers = await db.select().from(mcpServersTable).limit(1)
 
   if (existingServers.length === 0) {
+    // Use centralized config for default MCP server URL
     await db.insert(mcpServersTable).values({
       id: uuidv7(),
-      name: 'Local MCP Server',
-      url: 'http://localhost:8000/mcp/',
+      name: 'Thunderbolt MCP Server',
+      url: `${getDefaultCloudUrl()}/mcp/`,
       enabled: 1,
     })
   }
