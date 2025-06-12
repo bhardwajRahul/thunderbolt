@@ -65,6 +65,7 @@ export default function ModelsLayout() {
                 {model.provider === 'thunderbolt' && 'Thunderbolt'}
                 {model.provider === 'openai' && 'OpenAI'}
                 {model.provider === 'fireworks' && 'Fireworks'}
+                {model.provider === 'together' && 'Together AI'}
                 {model.provider === 'openai_compatible' && 'OpenAI Compatible'} - {model.model}
               </p>
             </SelectItem>

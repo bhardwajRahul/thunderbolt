@@ -26,7 +26,7 @@ import { z } from 'zod'
 
 interface Model {
   id: string
-  provider: 'openai' | 'fireworks' | 'openai_compatible' | 'thunderbolt' | 'flower'
+  provider: 'openai' | 'fireworks' | 'openai_compatible' | 'thunderbolt' | 'flower' | 'together'
   name: string
   model: string
   url: string | null
@@ -45,7 +45,7 @@ interface AvailableModel {
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'openai', 'fireworks', 'openai_compatible', 'flower']),
+    provider: z.enum(['thunderbolt', 'openai', 'fireworks', 'openai_compatible', 'flower', 'together']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     customModel: z.string().optional(),
@@ -93,6 +93,8 @@ export default function ModelsPage() {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [allAvailableModels, setAllAvailableModels] = useState<AvailableModel[]>([])
+  const [modelSearchQuery, setModelSearchQuery] = useState('')
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
@@ -242,7 +244,9 @@ export default function ModelsPage() {
       setConnectionStatus('idle')
       setConnectionError(null)
       setAvailableModels([])
+      setAllAvailableModels([])
       setSelectedModelId('')
+      setModelSearchQuery('')
       setIsLoadingModels(false)
       setIsTestingConnection(false)
       form.reset()
@@ -278,6 +282,7 @@ export default function ModelsPage() {
   const fetchAvailableModels = async (provider: string, apiKey?: string, url?: string) => {
     setIsLoadingModels(true)
     setAvailableModels([])
+    setAllAvailableModels([])
 
     try {
       let endpoint = ''
@@ -292,6 +297,10 @@ export default function ModelsPage() {
           endpoint = 'https://api.fireworks.ai/inference/v1/models'
           headers = { Authorization: `Bearer ${apiKey}` }
           break
+        case 'together':
+          endpoint = 'https://api.together.xyz/v1/models'
+          headers = { Authorization: `Bearer ${apiKey}` }
+          break
         case 'openai_compatible':
           if (url) {
             // Ensure URL ends with /v1 if not already
@@ -303,13 +312,15 @@ export default function ModelsPage() {
           }
           break
         case 'thunderbolt':
-          setAvailableModels([
+          const thunderboltModels = [
             { id: 'llama-v3p1-70b-instruct', name: 'Llama 3.1 70B' },
             { id: 'llama-v3p1-405b-instruct', name: 'Llama 3.1 405B' },
             { id: 'qwen3-235b-a22b', name: 'Qwen 3 235B' },
             { id: 'qwen2p5-72b-instruct', name: 'Qwen 2.5 72B' },
             // { id: 'deepseek-r1-0528', name: 'DeepSeek R1 671B' },
-          ])
+          ]
+          setAllAvailableModels(thunderboltModels)
+          setAvailableModels(thunderboltModels)
           setIsLoadingModels(false)
           return
       }
@@ -321,19 +332,21 @@ export default function ModelsPage() {
 
           let models = response.data || []
 
-          // For OpenAI, whitelist only the latest/current models
-          if (provider === 'openai') {
-            const whitelist = ['gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o1-preview', 'gpt-4-turbo', 'gpt-4-turbo-preview', 'gpt-4']
+          // Sort models alphabetically by ID
+          models = models.sort((a, b) => a.id.localeCompare(b.id))
 
-            models = models.filter((model) => whitelist.includes(model.id))
-          }
+          // Store all models for search functionality
+          setAllAvailableModels(models)
 
-          setAvailableModels(models)
+          // Show top 10 models by default
+          const top10Models = models.slice(0, 10)
+          setAvailableModels(top10Models)
         }
       }
     } catch (error) {
       console.error('Failed to fetch models:', error)
       setAvailableModels([])
+      setAllAvailableModels([])
     } finally {
       setIsLoadingModels(false)
     }
@@ -380,8 +393,8 @@ export default function ModelsPage() {
       form.setValue('model', modelId)
       form.setValue('customModel', '')
 
-      // Find the model in available models
-      const model = availableModels.find((m) => m.id === modelId)
+      // Find the model in all available models (not just the filtered ones)
+      const model = allAvailableModels.find((m) => m.id === modelId) || availableModels.find((m) => m.id === modelId)
 
       if (model?.name) {
         form.setValue('name', model.name)
@@ -393,6 +406,7 @@ export default function ModelsPage() {
     }
 
     setModelSelectOpen(false)
+    setModelSearchQuery('') // Clear search when model is selected
   }
 
   // Watch for provider changes with proper cleanup
@@ -408,6 +422,8 @@ export default function ModelsPage() {
       // Reset model selection when provider changes
       setSelectedModelId('')
       setAvailableModels([])
+      setAllAvailableModels([])
+      setModelSearchQuery('')
 
       // Reset form fields (excluding provider) using setValue with proper options
       form.setValue('name', '', { shouldValidate: false, shouldDirty: false })
@@ -453,6 +469,8 @@ export default function ModelsPage() {
         return 'OpenAI Compatible'
       case 'flower':
         return 'Flower'
+      case 'together':
+        return 'Together AI'
       default:
         return provider
     }
@@ -464,6 +482,16 @@ export default function ModelsPage() {
 
   const handleDeleteModel = (modelId: string) => {
     deleteModelMutation.mutate(modelId)
+  }
+
+  // Filter models based on search query
+  const getFilteredModels = () => {
+    if (!modelSearchQuery.trim()) {
+      return availableModels // Show top 10 by default
+    }
+
+    // Search through all available models when user types
+    return allAvailableModels.filter((model) => model.id.toLowerCase().includes(modelSearchQuery.toLowerCase()) || (model.name && model.name.toLowerCase().includes(modelSearchQuery.toLowerCase())))
   }
 
   return (
@@ -500,6 +528,7 @@ export default function ModelsPage() {
                             <SelectItem value="fireworks">Fireworks</SelectItem>
                             <SelectItem value="openai_compatible">OpenAI Compatible</SelectItem>
                             <SelectItem value="flower">Flower</SelectItem>
+                            <SelectItem value="together">Together AI</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormControl>
@@ -563,7 +592,15 @@ export default function ModelsPage() {
                       render={() => (
                         <FormItem className="flex flex-col">
                           <FormLabel>Model</FormLabel>
-                          <Popover open={modelSelectOpen} onOpenChange={setModelSelectOpen}>
+                          <Popover
+                            open={modelSelectOpen}
+                            onOpenChange={(open) => {
+                              setModelSelectOpen(open)
+                              if (!open) {
+                                setModelSearchQuery('') // Clear search when popover closes
+                              }
+                            }}
+                          >
                             <PopoverTrigger asChild>
                               <FormControl>
                                 <Button variant="outline" role="combobox" aria-expanded={modelSelectOpen} className={cn('w-full justify-between', !selectedModelId && 'text-muted-foreground')}>
@@ -574,29 +611,40 @@ export default function ModelsPage() {
                             </PopoverTrigger>
                             <PopoverContent className="p-0 w-full" side="bottom" align="start" sideOffset={4}>
                               <Command>
-                                <CommandInput placeholder="Search models..." />
+                                <CommandInput placeholder="Search models..." value={modelSearchQuery} onValueChange={setModelSearchQuery} />
                                 <CommandList>
                                   {isLoadingModels && <div className="py-6 text-center text-sm">Loading models...</div>}
-                                  {!isLoadingModels && availableModels.length === 0 && <CommandEmpty>No models found.</CommandEmpty>}
-                                  {!isLoadingModels && (
-                                    <CommandGroup>
-                                      {availableModels.map((model) => (
-                                        <CommandItem key={model.id} value={model.id} onSelect={() => handleSelectModel(model.id)}>
-                                          <Check className={cn('mr-2 h-4 w-4', selectedModelId === model.id ? 'opacity-100' : 'opacity-0')} />
-                                          <div className="flex flex-col">
-                                            <span>{model.name || model.id}</span>
-                                            {model.name && <span className="text-xs text-muted-foreground">{model.id}</span>}
-                                          </div>
-                                        </CommandItem>
-                                      ))}
-                                      {form.watch('provider') !== 'thunderbolt' && (
-                                        <CommandItem value="custom" onSelect={() => handleSelectModel('custom')}>
-                                          <Check className={cn('mr-2 h-4 w-4', selectedModelId === 'custom' ? 'opacity-100' : 'opacity-0')} />
-                                          <span className="italic">Custom</span>
-                                        </CommandItem>
-                                      )}
-                                    </CommandGroup>
-                                  )}
+                                  {!isLoadingModels &&
+                                    (() => {
+                                      const filteredModels = getFilteredModels()
+
+                                      if (filteredModels.length === 0) {
+                                        return <CommandEmpty>{modelSearchQuery ? 'No models found matching your search.' : 'No models found.'}</CommandEmpty>
+                                      }
+
+                                      return (
+                                        <CommandGroup>
+                                          {!modelSearchQuery && availableModels.length === 10 && allAvailableModels.length > 10 && (
+                                            <div className="px-2 py-1 text-xs text-muted-foreground">Showing top 10 models. Type to search all {allAvailableModels.length} models.</div>
+                                          )}
+                                          {filteredModels.map((model) => (
+                                            <CommandItem key={model.id} value={model.id} onSelect={() => handleSelectModel(model.id)}>
+                                              <Check className={cn('mr-2 h-4 w-4', selectedModelId === model.id ? 'opacity-100' : 'opacity-0')} />
+                                              <div className="flex flex-col">
+                                                <span>{model.name || model.id}</span>
+                                                {model.name && <span className="text-xs text-muted-foreground">{model.id}</span>}
+                                              </div>
+                                            </CommandItem>
+                                          ))}
+                                          {form.watch('provider') !== 'thunderbolt' && (
+                                            <CommandItem value="custom" onSelect={() => handleSelectModel('custom')}>
+                                              <Check className={cn('mr-2 h-4 w-4', selectedModelId === 'custom' ? 'opacity-100' : 'opacity-0')} />
+                                              <span className="italic">Custom</span>
+                                            </CommandItem>
+                                          )}
+                                        </CommandGroup>
+                                      )
+                                    })()}
                                 </CommandList>
                               </Command>
                             </PopoverContent>

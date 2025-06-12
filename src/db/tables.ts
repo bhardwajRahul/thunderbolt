@@ -94,7 +94,7 @@ export const todosTable = sqliteTable('todos', {
 
 export const modelsTable = sqliteTable('models', {
   id: text('id').primaryKey().notNull().unique(),
-  provider: text('provider', { enum: ['openai', 'fireworks', 'openai_compatible', 'thunderbolt', 'flower'] }).notNull(),
+  provider: text('provider', { enum: ['openai', 'fireworks', 'openai_compatible', 'thunderbolt', 'flower', 'together'] }).notNull(),
   name: text('name').notNull(),
   model: text('model').notNull(),
   url: text('url'),

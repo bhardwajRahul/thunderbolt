@@ -4,6 +4,7 @@ import { Model, SaveMessagesFunction } from '@/types'
 import { createFireworks } from '@ai-sdk/fireworks'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { createTogetherAI } from '@ai-sdk/togetherai'
 
 import { convertToModelMessages, experimental_createMCPClient, extractReasoningMiddleware, LanguageModel, streamText, ToolInvocation, UIMessage, wrapLanguageModel, type ToolSet } from 'ai'
 import { eq } from 'drizzle-orm'
@@ -136,6 +137,18 @@ export const createModel = async (modelConfig: Model): Promise<LanguageModel> =>
       })
 
       return openaiCompatible(modelConfig.model) as LanguageModel
+    }
+    case 'together': {
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
+      const together = createTogetherAI({
+        apiKey: modelConfig.apiKey,
+      })
+
+      const model = together(modelConfig.model)
+
+      return model as LanguageModel
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)
