@@ -51,16 +51,26 @@ export const getSelectedModel = async (): Promise<Model> => {
 export const getDefaultModelForThread = async (threadId: string, fallbackModelId?: string): Promise<Model> => {
   const db = DatabaseSingleton.instance.db
 
-  const thread = await db.query.chatMessagesTable.findFirst({
-    where: eq(chatMessagesTable.chatThreadId, threadId),
-    orderBy: desc(chatMessagesTable.id),
-    with: {
-      model: true,
-    },
-  })
+  const lastMessage = await db
+    .select({
+      id: chatMessagesTable.id,
+      chatThreadId: chatMessagesTable.chatThreadId,
+      modelId: chatMessagesTable.modelId,
+    })
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.chatThreadId, threadId))
+    .orderBy(desc(chatMessagesTable.id))
+    .limit(1)
+    .get()
 
-  if (thread?.model) {
-    return thread.model
+  if (lastMessage?.modelId) {
+    const model = await db.query.modelsTable.findFirst({
+      where: eq(modelsTable.id, lastMessage.modelId),
+    })
+
+    if (model) {
+      return model
+    }
   }
 
   if (fallbackModelId) {

@@ -91,8 +91,8 @@ export default function ChatUI({ chatHelpers, models, selectedModelId, onModelCh
     if (currentMessageCount > previousMessageCount) {
       scrollToBottom()
       resetUserScroll() // Reset user scroll when new message starts
-    } else if (chatHelpers.status === 'streaming' && !userHasScrolled && isAtBottom) {
-      // Continue scrolling during streaming only if user hasn't scrolled away AND we're at bottom
+    } else if (chatHelpers.status === 'streaming' && !userHasScrolled) {
+      // Continue scrolling during streaming as long as the user hasn't manually scrolled away
       scrollToBottom()
     }
 
