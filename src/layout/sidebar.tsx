@@ -19,11 +19,11 @@ import {
 import { DeleteAllChatsDialog, DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { chatThreadsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getOrCreateChatThread } from '@/lib/dal'
+import { getAllChatThreads, getOrCreateChatThread } from '@/lib/dal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   ArrowLeft,
   Bot,
@@ -48,7 +48,7 @@ import { trackEvent } from '@/lib/analytics'
 export default function ChatSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const { setOpenMobile } = useSidebar()
   const isMobile = useIsMobile()
@@ -76,9 +76,7 @@ export default function ChatSidebar() {
 
   const { data } = useQuery({
     queryKey: ['chatThreads'],
-    queryFn: async () => {
-      return db.select().from(chatThreadsTable).orderBy(desc(chatThreadsTable.id))
-    },
+    queryFn: getAllChatThreads,
     placeholderData: (previousData) => previousData,
   })
 

@@ -10,8 +10,9 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { accountsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import ImapClient from '@/imap/imap'
+import { getAllAccounts } from '@/lib/dal'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
@@ -30,7 +31,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>
 
 export default function AccountsSettingsPage() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [showDialog, setShowDialog] = React.useState(false)
   const [showSaved, setShowSaved] = React.useState(false)
@@ -41,9 +42,7 @@ export default function AccountsSettingsPage() {
   // Fetch accounts from the database
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts'],
-    queryFn: async () => {
-      return await db.select().from(accountsTable)
-    },
+    queryFn: getAllAccounts,
   })
 
   // Select first account by default

@@ -26,7 +26,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionCard } from '@/components/ui/section-card'
 
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { resetAppDir } from '@/lib/fs'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -34,6 +34,7 @@ import { z } from 'zod'
 import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent } from '@/lib/analytics'
+import { getPreferencesSettings } from '@/lib/dal'
 
 interface LocationData {
   name: string
@@ -59,7 +60,7 @@ const locationFormSchema = z.object({
 })
 
 export default function PreferencesSettingsPage() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -72,21 +73,7 @@ export default function PreferencesSettingsPage() {
   // Get any existing settings from the database
   const { data: settings } = useQuery({
     queryKey: ['settings'],
-    queryFn: async () => {
-      const nameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_name'))
-      const latData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lat'))
-      const lngData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'location_lng'))
-      const preferredNameData = await db.select().from(settingsTable).where(eq(settingsTable.key, 'preferred_name'))
-      const dataCollection = await db.select().from(settingsTable).where(eq(settingsTable.key, 'data_collection'))
-
-      return {
-        locationName: nameData[0]?.value || '',
-        locationLat: latData[0]?.value || '',
-        locationLng: lngData[0]?.value || '',
-        preferredName: preferredNameData[0]?.value || '',
-        dataCollection: dataCollection[0]?.value === 'false' ? false : true,
-      }
-    },
+    queryFn: getPreferencesSettings,
   })
 
   const nameForm = useForm<z.infer<typeof nameFormSchema>>({

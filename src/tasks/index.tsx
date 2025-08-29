@@ -3,7 +3,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { tasksTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
+import { DatabaseSingleton } from '@/db/singleton'
 import { cn } from '@/lib/utils'
 import { Task } from '@/types'
 import type { DropAnimation } from '@dnd-kit/core'
@@ -27,11 +27,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { and, asc, desc, eq, like, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { CheckCircle2, GripVertical, Plus, Square } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { trackEvent } from '@/lib/analytics'
+import { getIncompleteTasks, getIncompleteTasksCount } from '@/lib/dal'
 
 // Task Item Component - Memoized for performance
 interface TaskItemProps {
@@ -241,7 +242,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
 
 // Main Tasks Page Component
 export default function TasksPage() {
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   // State
@@ -277,21 +278,7 @@ export default function TasksPage() {
     isPlaceholderData,
   } = useQuery({
     queryKey: ['tasks', debouncedSearchQuery],
-    queryFn: async () => {
-      const query = db
-        .select()
-        .from(tasksTable)
-        .where(
-          debouncedSearchQuery
-            ? and(eq(tasksTable.isComplete, 0), like(tasksTable.item, `%${debouncedSearchQuery}%`))
-            : eq(tasksTable.isComplete, 0),
-        )
-        .orderBy(asc(tasksTable.order), desc(tasksTable.id))
-        .limit(50)
-
-      const result = await query
-      return result.filter((task) => task.item && task.item.trim() !== '')
-    },
+    queryFn: () => getIncompleteTasks(debouncedSearchQuery),
     placeholderData: (previousData) => previousData,
   })
 
@@ -316,14 +303,8 @@ export default function TasksPage() {
 
   // Count total tasks
   const { data: totalCount = 0 } = useQuery({
-    queryKey: ['tasks-count'],
-    queryFn: async () => {
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(tasksTable)
-        .where(eq(tasksTable.isComplete, 0))
-      return count
-    },
+    queryKey: ['tasks', 'count'],
+    queryFn: getIncompleteTasksCount,
   })
 
   // Mutations
@@ -341,7 +322,6 @@ export default function TasksPage() {
     onSuccess: (_, item) => {
       trackEvent('task_add', { task_length: item.length })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 
@@ -361,7 +341,6 @@ export default function TasksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 
@@ -386,7 +365,6 @@ export default function TasksPage() {
     onSuccess: (_, id) => {
       trackEvent('task_mark_complete', { task_id: id })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['tasks-count'] })
     },
   })
 

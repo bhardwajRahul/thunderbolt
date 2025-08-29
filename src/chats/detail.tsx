@@ -1,6 +1,6 @@
-import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
-import { useDatabase } from '@/hooks/use-database'
-import { saveMessagesWithContextUpdate } from '@/lib/dal'
+import { chatThreadsTable } from '@/db/tables'
+import { DatabaseSingleton } from '@/db/singleton'
+import { getChatThreadById, saveMessagesWithContextUpdate } from '@/lib/dal'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import { SaveMessagesFunction, type ThunderboltUIMessage } from '@/types'
@@ -8,10 +8,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { useParams } from 'react-router'
 import Chat from './chat'
+import { getChatMessagesByThreadId } from '@/lib/dal'
 
 export default function ChatDetailPage() {
   const params = useParams()
-  const { db } = useDatabase()
+  const db = DatabaseSingleton.instance.db
   const queryClient = useQueryClient()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
@@ -41,11 +42,7 @@ export default function ChatDetailPage() {
   } = useQuery<ThunderboltUIMessage[], Error>({
     queryKey: ['chatMessages', params.chatThreadId],
     queryFn: async () => {
-      const chatMessages = await db
-        .select()
-        .from(chatMessagesTable)
-        .where(eq(chatMessagesTable.chatThreadId, params.chatThreadId!))
-        .orderBy(chatMessagesTable.id)
+      const chatMessages = await getChatMessagesByThreadId(params.chatThreadId!)
       return chatMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     },
     enabled: !!params.chatThreadId,
@@ -61,7 +58,7 @@ export default function ChatDetailPage() {
       const dbChatMessages = await saveMessagesWithContextUpdate(params.chatThreadId, messages)
 
       // Fetch thread info to check if we need to generate a title
-      const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, params.chatThreadId)).get()
+      const thread = await getChatThreadById(params.chatThreadId)
 
       // Generate title in background if needed
       if (thread?.title === 'New Chat') {
