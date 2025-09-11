@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build_and_deploy_ios:
-    runs-on: macos-latest
+    runs-on: macos-14
     environment: thunderbolt_release
 
     steps:
@@ -32,7 +32,7 @@ jobs:
           node-version: 'lts/*'
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
@@ -42,7 +42,7 @@ jobs:
           rustflags: ''
 
       - name: Cache Cargo registry and build
-        uses: actions/cache@v4
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.0.2
         with:
           path: |
             ~/.cargo/registry
@@ -53,16 +53,19 @@ jobs:
             ${{ runner.os }}-cargo-ios-
             ${{ runner.os }}-cargo-
 
-      - name: Install iOS target
-        run: rustup target add aarch64-apple-ios
+      - name: Install iOS targets
+        run: |
+          rustup target add aarch64-apple-ios
+          rustup target add aarch64-apple-ios-sim
+          rustup target add x86_64-apple-ios
 
-      - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+      - name: Xcode Select Version
+        uses: mobiledevops/xcode-select-version-action@a58204ef24b6e61857940e51c0e11b0368065b94 # v1
         with:
-          xcode-version: latest-stable
+          xcode-select-version: '16.2'
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@cf7216d52fba1017929b4d7162fabe2b30af5b49 # v1.262.0
         with:
           ruby-version: '3.0'
           bundler-cache: true
@@ -81,18 +84,8 @@ jobs:
           PROVISIONING_PROFILE: ${{ secrets.APP_STORE_PROVISIONING_PROFILE }}
         run: |
           # Validate required secrets
-          if [ -z "$APPLE_CERTIFICATE_P12" ]; then
-            echo "❌ APPLE_CERTIFICATE_P12 secret is not set"
-            exit 1
-          fi
-
-          if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
-            echo "❌ APPLE_CERTIFICATE_PASSWORD secret is not set"
-            exit 1
-          fi
-
-          if [ -z "$PROVISIONING_PROFILE" ]; then
-            echo "❌ PROVISIONING_PROFILE secret is not set"
+          if [ -z "$APPLE_CERTIFICATE_P12" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ] || [ -z "$PROVISIONING_PROFILE" ]; then
+            echo "❌ Required secrets are not set"
             exit 1
           fi
 
@@ -100,54 +93,53 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
 
           # Decode and install certificate
-          echo "📋 Decoding certificate..."
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > certificate.p12
+          CLEAN_CERT=$(echo "$APPLE_CERTIFICATE_P12" | tr -d '\n\r\t ' | tr -d '[:space:]')
+          echo "$CLEAN_CERT" | base64 --decode > certificate.p12
 
-          # Validate certificate file
           if [ ! -s certificate.p12 ]; then
-            echo "❌ Failed to decode certificate or certificate is empty"
+            echo "❌ Failed to decode certificate"
             exit 1
           fi
 
-          echo "✅ Certificate decoded successfully ($(wc -c < certificate.p12) bytes)"
-
           # Create temporary keychain
-          echo "🔐 Creating temporary keychain..."
           security create-keychain -p "temp-keychain-password" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "temp-keychain-password" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
 
-          # Import certificate to keychain with better error handling
-          echo "📥 Importing certificate to keychain..."
-          if ! security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
-            echo "❌ Failed to import certificate. Common issues:"
-            echo "   - Incorrect certificate password"
-            echo "   - Certificate file is corrupted"
-            echo "   - Certificate format is not supported"
-            echo "   - Certificate has expired"
-            exit 1
-          fi
+          # Convert certificate to macOS-compatible format
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -passin pass:"$APPLE_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -passin pass:"$APPLE_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
-          echo "✅ Certificate imported successfully"
+          # Import the converted certificate
+          security import macos_certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+
+          # Clean up temporary files
+          rm temp_cert.pem temp_key.pem macos_certificate.p12
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temp-keychain-password" build.keychain
 
           # Install provisioning profile
-          echo "📱 Installing provisioning profile..."
           echo "$PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
 
-          # Validate provisioning profile
           if [ ! -s profile.mobileprovision ]; then
-            echo "❌ Failed to decode provisioning profile or profile is empty"
+            echo "❌ Failed to decode provisioning profile"
             exit 1
           fi
 
-          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-          echo "✅ Provisioning profile installed successfully"
+          # Extract profile info
+          PROFILE_UUID=$(security cms -D -i profile.mobileprovision | plutil -extract UUID raw -)
+          PROFILE_NAME=$(security cms -D -i profile.mobileprovision | plutil -extract Name raw -)
+
+          # Install profile
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+
+          # Export for later use
+          echo "PROVISIONING_PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
 
           # Clean up sensitive files
           rm certificate.p12 profile.mobileprovision
-          echo "🧹 Cleaned up sensitive files"
 
       - name: Setup App Store Connect API Key
         working-directory: src-tauri/gen/apple
@@ -156,32 +148,135 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
         run: |
           mkdir -p fastlane
-          echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > fastlane/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+
+          # Decode API key (try base64 first, fallback to raw)
+          if echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > fastlane/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8 2>/dev/null; then
+            echo "✅ Decoded base64 API key"
+          else
+            echo "$APP_STORE_CONNECT_API_KEY" > fastlane/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+          fi
+
+          # Set environment variables for Tauri build
+          APPLE_API_KEY_PATH="$(pwd)/fastlane/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8"
+          echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         run: bun install
 
       - name: Build frontend
-        run: bun run build
+        run: |
+          echo "VITE_THUNDERBOLT_CLOUD_URL: $VITE_THUNDERBOLT_CLOUD_URL"
+          bun run build
         env:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Build and deploy to TestFlight
+      - name: Build Tauri iOS App
+        env:
+          APPLE_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RUSTC_WRAPPER: ''
+          SCCACHE_DISABLE: '1'
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: |
+          bun install
+
+          # Create export options plist to work around Fastlane Xcode 16 bug
+          # See: https://github.com/fastlane/fastlane/issues/29256
+          cd src-tauri/gen/apple
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>net.thunderbird.thunderbolt</key>
+                  <string>$PROVISIONING_PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          cd ../../../
+
+          bun tauri ios build --export-method app-store-connect
+
+      - name: Upload to TestFlight
         working-directory: src-tauri/gen/apple
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          MATCH_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          NOTIFY_TESTERS: ${{ github.event.inputs.notify_testers || 'false' }}
-          VERSION_INPUT: ${{ github.event.inputs.version }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
         run: |
-          echo "🧪 Building for TestFlight beta..."
-          bundle exec fastlane beta
+          # Find the built IPA file
+          IPA_PATH=$(find build -name "*.ipa" -type f | head -1)
+
+          if [ -f "$IPA_PATH" ]; then
+            # Create API key file for Transporter
+            mkdir -p ~/.appstoreconnect/private_keys
+            
+            # Write API key (handle both base64 and raw P8)
+            if echo "$ASC_KEY" | grep -q "BEGIN PRIVATE KEY"; then
+              echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+            else
+              echo "$ASC_KEY" | base64 -d > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+            fi
+            chmod 600 ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+            
+            # Create Transporter configuration
+            echo "sessionTimeout = 30000" > /tmp/transporter_config.properties
+            echo "readTimeout = 30000" >> /tmp/transporter_config.properties
+            echo "connectionTimeout = 30000" >> /tmp/transporter_config.properties
+            
+            # Use Transporter directly (bypasses altool parsing issues)
+            /Applications/Xcode.app/Contents/SharedFrameworks/ContentDeliveryServices.framework/itms/bin/iTMSTransporter \
+              -m upload \
+              -f "$IPA_PATH" \
+              -k ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+              -jwt-issuer "$ASC_ISSUER_ID" \
+              -jwt-kid "$ASC_KEY_ID" \
+              -t Signiant \
+              -v informational \
+              -Dtransporter.client.properties=/tmp/transporter_config.properties || {
+              
+              # Fallback: Use altool
+              xcrun altool --upload-app \
+                --type ios \
+                --file "$IPA_PATH" \
+                --apiKey "$ASC_KEY_ID" \
+                --apiIssuer "$ASC_ISSUER_ID" \
+                --apiKeyFilePath ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+                --verbose
+            }
+            
+            upload_result=$?
+            
+            # Clean up files
+            rm -f ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+            rm -f /tmp/transporter_config.properties
+            
+            if [ $upload_result -ne 0 ]; then
+              echo "❌ Upload failed with exit code $upload_result"
+              exit 1
+            fi
+          else
+            echo "❌ No IPA file found in build directory"
+            exit 1
+          fi
 
       - name: Upload build artifacts (if build fails)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: ios-build-logs-${{ github.run_id }}
           path: |
@@ -200,16 +295,4 @@ jobs:
         working-directory: src-tauri/gen/apple
         run: |
           rm -f fastlane/AuthKey_*.p8
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-
-      - name: Notify success
-        if: success()
-        run: |
-          echo "🚀 iOS app successfully uploaded to TestFlight!"
-          echo "Check App Store Connect for the new build."
-
-      - name: Notify failure
-        if: failure()
-        run: |
-          echo "❌ iOS build failed. Check the logs above for details."
-          echo "Common issues: certificate problems, provisioning profile issues, or build errors."
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision
