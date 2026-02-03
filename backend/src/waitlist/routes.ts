@@ -1,12 +1,13 @@
 import type { db } from '@/db/client'
 import { waitlist } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import { sendWaitlistJoinedEmail, sendWaitlistReminderEmail } from './utils'
 
 export const createWaitlistRoutes = (database: typeof db) =>
-  new Elysia({ prefix: '/waitlist' }).post(
+  new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
     '/join',
     async ({ body }) => {
       const email = normalizeEmail(body.email)

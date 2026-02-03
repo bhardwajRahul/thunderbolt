@@ -47,48 +47,41 @@ export const getErrorStatus = (error: unknown, fallbackStatus: number = 500): nu
 }
 
 /**
- * Global error handling middleware for Elysia
- * Provides consistent error responses and logging
- * Returns format: { success: false, data: null, error: string }
+ * Reusable error handler for Elysia routes/plugins
+ * SECURITY: Never exposes internal error details to clients
+ *
+ * Use this on any Elysia instance that defines routes:
+ * ```ts
+ * new Elysia().onError(safeErrorHandler).get('/route', ...)
+ * ```
  */
-export const createErrorHandlingMiddleware = () => {
-  const errorHandler: ErrorHandler = (ctx) => {
-    const { code, error, set, request } = ctx
-    const log = (ctx as any).log
-
-    switch (code) {
-      case 'VALIDATION':
-        set.status = 400
-        log?.warn({ error: error.message }, 'Validation failed')
-        return createErrorResponse(`Validation failed: ${error.message}`)
-
-      case 'NOT_FOUND':
-        set.status = 404
-        log?.warn({ url: request.url }, 'Resource not found')
-        return createErrorResponse('The requested resource was not found')
-
-      default:
-        return handleGenericError(error, set, log)
-    }
+export const safeErrorHandler: ErrorHandler = ({ code, error, set }) => {
+  // Let Elysia handle validation errors with its default behavior (422 status)
+  // These are user-facing and safe to expose
+  if (code === 'VALIDATION') {
+    return
   }
 
-  return new Elysia({ name: 'error-handling' }).onError(errorHandler)
-}
+  // Let Elysia handle NOT_FOUND with its default behavior
+  if (code === 'NOT_FOUND') {
+    return
+  }
 
-/**
- * Handle generic errors with appropriate status codes and logging
- * SECURITY: Never expose internal error details to clients - only validation errors pass through
- */
-const handleGenericError = (error: unknown, set: Context['set'], log?: any): ErrorResponse => {
   const currentStatus = typeof set.status === 'number' ? set.status : 500
   const status = getErrorStatus(error, currentStatus)
   set.status = status
 
   if (error instanceof Error) {
-    log?.error({ error: error.message, stack: error.stack }, `Request failed with status ${status}`)
-  } else {
-    log?.error({ error }, 'Non-Error exception thrown')
+    console.error(`[${status}] ${error.message}`, error.stack)
   }
 
   return createErrorResponse(getSafeErrorMessage(status))
 }
+
+/**
+ * Global error handling middleware for Elysia
+ * NOTE: Due to Elysia's plugin architecture, this only handles errors
+ * from routes defined directly on the main app, not from plugins.
+ * Each plugin should use `safeErrorHandler` via `.onError(safeErrorHandler)`
+ */
+export const createErrorHandlingMiddleware = () => new Elysia({ name: 'error-handling' }).onError(safeErrorHandler)
