@@ -32,13 +32,13 @@ import { ContentViewProvider } from './content-view/context'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
-import { useSettings } from './hooks/use-settings'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
+import { useSettings } from './hooks/use-settings'
 
 const queryClient = new QueryClient()
 
@@ -56,12 +56,12 @@ function AppContent({ initData }: { initData: InitData }) {
   )
 }
 
-function AppRoutes(_: { initData: InitData }) {
+function AppRoutes({ initData }: { initData: InitData }) {
   usePageTracking()
   useDeepLinkListener()
 
   const { experimentalFeatureTasks } = useSettings({
-    experimental_feature_tasks: Boolean,
+    experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
   const bypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true'
