@@ -59,7 +59,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem }: GroupSect
   return (
     <div className="flex flex-col gap-1">
       {group.label && <h3 className="text-xs font-medium text-muted-foreground px-3 pt-2">{group.label}</h3>}
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1.5">
         {group.items.map((item) => (
           <ItemButton
             key={item.id}
@@ -227,7 +227,7 @@ export const SearchableMenu = <T,>({
                   />
                 ))
               ) : (
-                <div className="flex flex-col">
+                <div className="flex flex-col gap-1.5">
                   {(filteredItems as SearchableMenuItem<T>[]).map((item) => (
                     <ItemButton
                       key={item.id}
