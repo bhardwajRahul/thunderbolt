@@ -51,6 +51,33 @@ export const isMobile = (): boolean => {
   return currentPlatform === 'ios' || currentPlatform === 'android'
 }
 
+type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
+
+/**
+ * Returns the browser when running on web (not Tauri).
+ * Chrome and Edge include "Safari" in their UA for compatibility, so we check Edge/Chrome first.
+ * @returns Browser identifier, or 'unknown' when not on web or UA cannot be parsed
+ */
+export const getWebBrowser = (): WebBrowser => {
+  if (getPlatform() !== 'web' || typeof navigator === 'undefined') {
+    return 'unknown'
+  }
+
+  const ua = navigator.userAgent
+
+  if (ua.includes('Edg')) {
+    return 'edge'
+  } else if (ua.includes('Chrome')) {
+    return 'chrome'
+  } else if (ua.includes('Firefox')) {
+    return 'firefox'
+  } else if (ua.includes('Safari')) {
+    return 'safari'
+  }
+
+  return 'unknown'
+}
+
 /**
  * Checks if OPFS (Origin Private File System) is available
  * OPFS is not available in private/incognito browsing modes
@@ -149,17 +176,14 @@ export const getDeviceDisplayName = (): string => {
     const name = p.charAt(0).toUpperCase() + p.slice(1)
     return `Thunderbolt on ${name}`
   }
+  const browser = getWebBrowser()
+  const browserDisplay = browser === 'unknown' ? 'Browser' : browser.charAt(0).toUpperCase() + browser.slice(1)
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-  let browser = 'Browser'
-  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome'
-  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari'
-  else if (ua.includes('Firefox')) browser = 'Firefox'
-  else if (ua.includes('Edg')) browser = 'Edge'
   let os = 'Unknown'
   if (ua.includes('Mac')) os = 'macOS'
   else if (ua.includes('Win')) os = 'Windows'
   else if (ua.includes('Linux')) os = 'Linux'
   else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
   else if (ua.includes('Android')) os = 'Android'
-  return `${browser} on ${os}`
+  return `${browserDisplay} on ${os}`
 }

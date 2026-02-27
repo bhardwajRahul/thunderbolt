@@ -8,7 +8,22 @@ import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interfac
 import { DatabaseSingleton } from '../singleton'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { getPlatform } from '@/lib/platform'
+import { getPlatform, getWebBrowser } from '@/lib/platform'
+
+/** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
+export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
+
+/**
+ * Determines which PowerSync database config to use based on platform and browser.
+ * - default: Non-Safari web — PowerSync's default setup works well.
+ * - safari-tauri: Safari web or Tauri — full WASQLiteOpenFactory with OPFSCoopSyncVFS required.
+ */
+export const getPowerSyncDatabaseConfig = (): PowerSyncDatabaseConfig => {
+  const isWeb = getPlatform() === 'web'
+  const isSafari = getWebBrowser() === 'safari'
+  if (isWeb && !isSafari) return 'default'
+  return 'safari-tauri'
+}
 
 /** LocalStorage key for sync enabled flag */
 const syncEnabledKey = 'powersync_sync_enabled'
@@ -68,6 +83,41 @@ export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
   }
 }
 
+/** @internal Exported for testing */
+export const getPowerSyncOptions = (path: string) => {
+  const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
+  const config = getPowerSyncDatabaseConfig()
+
+  if (config === 'default') {
+    return {
+      database: { dbFilename },
+      schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
+    }
+  }
+
+  /**
+   * Safari (web) + Tauri (iOS/Desktop): Full WASQLiteOpenFactory required.
+   * OPFSCoopSyncVFS — synchronous OPFS handles. Avoids IDBBatchAtomicVFS + Asyncify
+   * (causes "Maximum call stack size exceeded" on Safari/iOS; JSC has smaller stack than V8)
+   * and SharedArrayBuffer + SharedWorker (exceeds iOS WKWebView memory, black-screen crash).
+   * Explicit UMD worker paths — bypasses import.meta.url which fails under tauri://.
+   * enableMultiTabs: false — dedicated worker, not SharedWorker (fails under tauri://).
+   *
+   * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
+   */
+  return {
+    database: new WASQLiteOpenFactory({
+      dbFilename: dbFilename,
+      vfs: WASQLiteVFS.OPFSCoopSyncVFS,
+      worker: '/@powersync/worker/WASQLiteDB.umd.js',
+      flags: { enableMultiTabs: false },
+    }),
+    schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
+    flags: { enableMultiTabs: false },
+    sync: { worker: '/@powersync/worker/SharedSyncImplementation.umd.js' },
+  }
+}
+
 /**
  * PowerSync database implementation.
  * Wraps PowerSyncDatabase with Drizzle for type-safe queries.
@@ -102,31 +152,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already initialized
     }
 
-    // Extract just the filename from the path
-    const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
+    const options = getPowerSyncOptions(path)
 
-    const DB_WORKER_PATH = '/@powersync/worker/WASQLiteDB.umd.js'
-    const SYNC_WORKER_PATH = '/@powersync/worker/SharedSyncImplementation.umd.js'
-
-    const isIOS = getPlatform() === 'ios'
-
-    // Create PowerSync database.
-    // Cast options: @powersync/web uses a nested @powersync/common, so Schema/Table types differ from our Drizzle schema.
-    const options: WebPowerSyncDatabaseOptions = {
-      database: new WASQLiteOpenFactory({
-        dbFilename: dbFilename,
-        vfs: isIOS ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS,
-        worker: DB_WORKER_PATH,
-        flags: { enableMultiTabs: false },
-      }),
-      // { dbFilename },
-      schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-      // Disable web workers on iOS: WASM + Web Worker memory causes iOS to kill the
-      // WKWebView WebContent process (~30s after launch), resulting in a black screen.
-      // See: https://github.com/tauri-apps/tauri/issues/14371
-      flags: { enableMultiTabs: false },
-      sync: { worker: SYNC_WORKER_PATH },
-    }
     this.powerSync = new PowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
