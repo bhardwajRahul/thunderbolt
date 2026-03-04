@@ -304,6 +304,24 @@ bun run tauri ios dev --force-ip-prompt --host # Be sure to select the IP of you
 - https://tauri.app/develop/#developing-your-mobile-application
 - https://github.com/sarah-quinones/gemm/issues/31#issuecomment-2395557397
 
+## Thunderbot Skills
+
+The Claude Code slash commands in `.claude/commands/` are managed via [git subtree](https://www.atlassian.com/git/tutorials/git-subtree) from the [thunderbot](https://github.com/user/thunderbot) repo. This means you can edit them here as normal files and sync changes in both directions.
+
+```bash
+# Pull latest skills from thunderbot
+git subtree pull --prefix=.claude/commands thunderbot main --squash
+
+# Push local skill edits back to thunderbot
+git subtree push --prefix=.claude/commands thunderbot main
+```
+
+If you haven't added the remote yet:
+
+```bash
+git remote add thunderbot git@github.com:user/thunderbot.git
+```
+
 ## Documentation
 
 - [Claude Code Skills](./docs/claude-code.md) - Slash commands for bootstrapping, code quality, automation, and more
