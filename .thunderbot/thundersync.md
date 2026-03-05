@@ -13,7 +13,9 @@ Sync thunderbot skills between this repo and the upstream thunderbot repo via gi
    ```
 
 2. Ask the user what they want to do:
-   - **Pull**: Pull latest skills from thunderbot → `git subtree pull --prefix=.claude/commands thunderbot main --squash`
-   - **Push**: Push local skill changes back to thunderbot → `git subtree push --prefix=.claude/commands thunderbot main`
+   - **Pull**: Pull latest skills from thunderbot → `git subtree pull --prefix=.thunderbot thunderbot main --squash`
+   - **Push**: Push local skill changes back to thunderbot → `git subtree push --prefix=.thunderbot thunderbot main`
 
 3. Run the appropriate command and report the result.
+
+4. After a **pull**, recreate agent symlinks: `make setup-symlinks`
