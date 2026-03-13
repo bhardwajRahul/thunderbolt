@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
 import { z } from 'zod'
@@ -22,7 +22,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { useDatabase } from '@/contexts'
-import { deleteModel, updateModel, getModelQuery, mapModel } from '@/dal'
+import { deleteModel, updateModel, getModelQuery } from '@/dal'
 import type { Model } from '@/types'
 import { Trash2 } from 'lucide-react'
 
@@ -74,7 +74,7 @@ export default function ModelDetailPage() {
     enabled: !!modelId,
   })
 
-  const model = useMemo(() => data.map(mapModel)[0], [data])
+  const model = data?.[0]
 
   const updateModelMutation = useMutation({
     mutationFn: async (model: Partial<Model> & { id: string }) => {

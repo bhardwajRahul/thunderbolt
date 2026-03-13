@@ -9,7 +9,6 @@ import {
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
-  mapModel,
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -102,7 +101,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
       setMcpClients(mcpClients)
       setModes(modes)
-      setModels(models.map(mapModel))
+      setModels(models)
 
       setIsReady(true)
 
@@ -151,7 +150,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setMcpClients(mcpClients)
     setModes(modes)
-    setModels(models.map(mapModel))
+    setModels(models)
 
     setIsReady(true)
   }

@@ -19,7 +19,6 @@ import {
   getAllTriggersForPrompt,
   getAvailableModels,
   getSelectedModelQuery,
-  mapModel,
   updateAutomation,
 } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
@@ -31,7 +30,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { eq } from 'drizzle-orm'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -61,19 +60,17 @@ export default function AutomationFormModal({
 }: AutomationFormModalProps) {
   const db = useDatabase()
 
-  const { data = [] } = useQuery({
+  const { data: models = [] } = useQuery({
     queryKey: ['models', 'availableModels'],
     query: toCompilableQuery(getAvailableModels(db)),
   })
-
-  const models = useMemo(() => data.map(mapModel), [data])
 
   const { data: selectedModelRows = [] } = useQuery({
     queryKey: ['models', 'selectedModel'],
     query: toCompilableQuery(getSelectedModelQuery(db)),
   })
 
-  const selectedModel = selectedModelRows[0] ? mapModel(selectedModelRows[0]) : undefined
+  const selectedModel = selectedModelRows?.[0]
 
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,
